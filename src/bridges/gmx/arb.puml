@@ -1,0 +1,8 @@
+@startuml arb-architecture
+
+'Note: EthBridge/BridgeId will be Arb Inbox'
+Aztec -> ETHBridge
+ETHBridge -> GMX
+GMX -> ETHBridge
+ETHBridge -> Aztec
+@endumla
