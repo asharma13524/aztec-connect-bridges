@@ -1,5 +1,11 @@
-export interface AssetValue {
-  assetId: bigint; // the Aztec AssetId (this can be queried from the rollup contract)
+import { EthAddress } from "@aztec/barretenberg/address";
+import { AssetValue } from "@aztec/barretenberg/asset";
+
+export interface UnderlyingAsset {
+  address: EthAddress;
+  name: string;
+  symbol: string;
+  decimals: number;
   amount: bigint;
 }
 
@@ -22,9 +28,9 @@ export enum SolidityType {
 }
 
 export interface AztecAsset {
-  id: bigint;
+  id: number;
   assetType: AztecAssetType;
-  erc20Address: string;
+  erc20Address: EthAddress;
 }
 
 export interface AuxDataConfig {
@@ -35,85 +41,110 @@ export interface AuxDataConfig {
 }
 
 export interface BridgeDataFieldGetters {
-  /*
-  @dev This function should be implemented for stateful bridges. It's purpose is to tell the developer using the bridge the value of a given interaction.
-  @dev The value should be returned as an array of AssetValue's
-  */
-  getInteractionPresentValue?(interactionNonce: bigint): Promise<AssetValue[]>;
+  /**
+   * @dev This function should be implemented for stateful bridges
+   * @param interactionNonce A globally unique identifier of a given DeFi interaction
+   * @param inputValue User's input value
+   * @return The value of the user's share of a given interaction
+   */
+  getInteractionPresentValue?(interactionNonce: number, inputValue: bigint): Promise<AssetValue[]>;
 
-  /*
-  @dev This function should be implemented for all bridges that use auxData that require onchain data. It's purpose is to tell the developer using the bridge
-  @dev the set of possible auxData's that they can use for a given set of inputOutputAssets.
-  */
+  /**
+   * @dev This function should be implemented for all bridges that use auxData which require on-chain data
+   * @param inputAssetA A struct detailing the first input asset
+   * @param inputAssetB A struct detailing the second input asset
+   * @param outputAssetA A struct detailing the first output asset
+   * @param outputAssetB A struct detailing the second output asset
+   * @return The set of possible auxData values that they can use for a given set of input and output assets
+   */
   getAuxData?(
     inputAssetA: AztecAsset,
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
-  ): Promise<bigint[]>;
+  ): Promise<number[]>;
 
-  /*
-  @dev This public variable defines the structure of the auxData
-  */
+  /**
+   * @dev This public variable defines the structure of the auxData
+   */
   auxDataConfig: AuxDataConfig[];
 
-  /*
-  @dev This function should be implemented for all bridges. It should return the expected value in of the bridgeId given an inputValue
-  @dev given inputValue of inputAssetA and inputAssetB
-  */
-
+  /**
+   * @dev This function should be implemented for all bridges
+   * @param inputAssetA A struct detailing the first input asset
+   * @param inputAssetB A struct detailing the second input asset
+   * @param outputAssetA A struct detailing the first output asset
+   * @param outputAssetB A struct detailing the second output asset
+   * @param auxData Arbitrary data to be passed into the bridge contract (slippage / nftID etc)
+   * @param inputValue Amount of inputAssetA (and inputAssetB if used) provided on input
+   * @return The expected return amounts of outputAssetA and outputAssetB
+   */
   getExpectedOutput(
     inputAssetA: AztecAsset,
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
-    auxData: bigint,
+    auxData: number,
     inputValue: bigint,
   ): Promise<bigint[]>;
 
-  /*
-  @dev This function should be implemented for async bridges. It should return the date at which the bridge is expected to be finalised.
-  @dev For limit orders this should be the expiration.
-  */
-  getExpiration?(interactionNonce: bigint): Promise<bigint>;
+  /**
+   * @dev This function should be implemented for async bridges
+   * @param interactionNonce A globally unique identifier of a given DeFi interaction
+   * @return The date at which the bridge is expected to be finalised (for limit orders this should be the expiration)
+   */
+  getExpiration?(interactionNonce: number): Promise<bigint>;
 
-  hasFinalised?(interactionNonce: bigint): Promise<Boolean>;
+  /**
+   * @dev This function should be implemented for async bridges
+   * @param interactionNonce A globally unique identifier of a given DeFi interaction
+   * @return A boolean indicating whether the interaction has been finilised
+   */
+  hasFinalised?(interactionNonce: number): Promise<boolean>;
 
-  /*
-  @dev This function should be implemented for all bridges are stateful. It should return the expected value 1 year from now of outputAssetA and outputAssetB
-  @dev given inputValue of inputAssetA and inputAssetB
-  */
+  /**
+   * @notice This function computes annual percentage return (APR) for a given asset
+   * @dev This function should be implemented for all bridges which work with yield-bearing assets
+   * @param yieldAsset A struct detailing the yield asset (e.g. cToken, wstETH, aETH, ...)
+   * @return The expected APR (e.g. for Lido the return value would currently be 3.9)
+   */
+  getAPR?(yieldAsset: AztecAsset): Promise<number>;
 
-  getExpectedYield?(
-    inputAssetA: AztecAsset,
-    inputAssetB: AztecAsset,
-    outputAssetA: AztecAsset,
-    outputAssetB: AztecAsset,
-    auxData: bigint,
-    inputValue: bigint,
-  ): Promise<number[]>;
-
-  /*
-  @dev This function should be implemented for all bridges dealing with L1 liqudity pools. It should return the Layer liquidity this bridge call will be interacting with
-  @dev e.g the liquidity of the underlying yield pool or AMM for a given pair
-  */
+  /**
+   * @notice This function computes market size
+   * @dev Should be implemented for all bridges dealing with L1 liquidity
+   * @param inputAssetA A struct detailing the first input asset
+   * @param inputAssetB A struct detailing the second input asset
+   * @param outputAssetA A struct detailing the first output asset
+   * @param outputAssetB A struct detailing the second output asset
+   * @param auxData Arbitrary data to be passed into the bridge contract (slippage / nftID etc)
+   * @return L1 liquidity this bridge call will be interacting with (e.g. the liquidity of the underlying yield pool
+   *       or AMM, amount of ETH staked in Lido etc.)
+   */
   getMarketSize?(
     inputAssetA: AztecAsset,
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
-    auxData: bigint,
+    auxData: number,
   ): Promise<AssetValue[]>;
 
-  /*
-  @dev This function should be implemented for all async yield bridges.
-  @dev It should return the yield for a given interaction
-  */
-  getCurrentYield?(interactionNonce: bigint): Promise<number[]>;
+  /**
+   * @notice This function computes annual percentage return (APR) for a given interaction
+   * @dev This function should be implemented for all async yield bridges
+   * @param interactionNonce A globally unique identifier of a given DeFi interaction
+   * @return APR based on the information of a given interaction (e.g. token amounts after finalisation etc.)
+   */
+  getInteractionAPR?(interactionNonce: number): Promise<number[]>;
 
-  /*
-  @dev This function should be implemented for swap / LP bridges.
-  @dev It should return a packed aux data taking into account a dynamic price and fee
-  */
-  lPAuxData?(data: bigint[]): Promise<bigint[]>;
+  /**
+   * @notice This function gets the underlying amount for wrapped assets or shares
+   * @param asset The wrapped asset
+   * @param amount The amount of wrapped asset
+   * @return The underlying asset (address, name, symbol, decimals, amount)
+   */
+  getUnderlyingAmount?(asset: AztecAsset, amount: bigint): Promise<UnderlyingAsset>;
+
+  // Used only in Element, TODO: remove once clients get refactored to not share 1 class
+  getTermAPR?(underlying: AztecAsset, auxData: number, inputValue: bigint): Promise<number>;
 }

@@ -1,17 +1,18 @@
-import { AssetValue, AuxDataConfig, AztecAsset, BridgeDataFieldGetters, SolidityType } from '../bridge-data';
+import { AuxDataConfig, AztecAsset, BridgeDataFieldGetters, SolidityType } from "../bridge-data";
+import { AssetValue } from "@aztec/barretenberg/asset";
 
 export class ExampleBridgeData implements BridgeDataFieldGetters {
   constructor() {}
 
   // @dev This function should be implemented for stateful bridges. It should return an array of AssetValue's
   // @dev which define how much a given interaction is worth in terms of Aztec asset ids.
-  // @param bigint interactionNonce the interaction nonce to return the value for
+  // @param interactionNonce the nonce to return the value for
 
-  async getInteractionPresentValue(interactionNonce: bigint): Promise<AssetValue[]> {
+  async getInteractionPresentValue(interactionNonce: number): Promise<AssetValue[]> {
     return [
       {
-        assetId: 1n,
-        amount: 1000n,
+        assetId: 1,
+        value: 1000n,
       },
     ];
   }
@@ -21,8 +22,8 @@ export class ExampleBridgeData implements BridgeDataFieldGetters {
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
-  ): Promise<bigint[]> {
-    return [0n];
+  ): Promise<number[]> {
+    return [0];
   }
 
   public auxDataConfig: AuxDataConfig[] = [
@@ -30,7 +31,7 @@ export class ExampleBridgeData implements BridgeDataFieldGetters {
       start: 0,
       length: 64,
       solidityType: SolidityType.uint64,
-      description: 'Not Used',
+      description: "Not Used",
     },
   ];
 
@@ -39,8 +40,8 @@ export class ExampleBridgeData implements BridgeDataFieldGetters {
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
-    auxData: bigint,
-    precision: bigint,
+    auxData: number,
+    inputValue: bigint,
   ): Promise<bigint[]> {
     return [100n, 0n];
   }
@@ -50,8 +51,8 @@ export class ExampleBridgeData implements BridgeDataFieldGetters {
     inputAssetB: AztecAsset,
     outputAssetA: AztecAsset,
     outputAssetB: AztecAsset,
-    auxData: bigint,
+    auxData: number,
   ): Promise<AssetValue[]> {
-    return [{ assetId: 0n, amount: 100n }];
+    return [{ assetId: 0, value: 100n }];
   }
 }

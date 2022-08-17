@@ -1,92 +1,110 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright 2022 Spilsbury Holdings Ltd
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Aztec
 pragma solidity >=0.8.4;
 
+// @dev For documentation of the functions within this interface see RollupProcessor contract
 interface IRollupProcessor {
-    function defiBridgeProxy() external view returns (address);
+    /*----------------------------------------
+    EVENTS
+    ----------------------------------------*/
+    event OffchainData(uint256 indexed rollupId, uint256 chunk, uint256 totalChunks, address sender);
+    event RollupProcessed(uint256 indexed rollupId, bytes32[] nextExpectedDefiHashes, address sender);
+    event DefiBridgeProcessed(
+        uint256 indexed encodedBridgeCallData,
+        uint256 indexed nonce,
+        uint256 totalInputValue,
+        uint256 totalOutputValueA,
+        uint256 totalOutputValueB,
+        bool result,
+        bytes errorReason
+    );
+    event AsyncDefiBridgeProcessed(
+        uint256 indexed encodedBridgeCallData,
+        uint256 indexed nonce,
+        uint256 totalInputValue
+    );
+    event Deposit(uint256 indexed assetId, address indexed depositorAddress, uint256 depositValue);
+    event WithdrawError(bytes errorReason);
+    event AssetAdded(uint256 indexed assetId, address indexed assetAddress, uint256 assetGasLimit);
+    event BridgeAdded(uint256 indexed bridgeAddressId, address indexed bridgeAddress, uint256 bridgeGasLimit);
+    event RollupProviderUpdated(address indexed providerAddress, bool valid);
+    event VerifierUpdated(address indexed verifierAddress);
+    event Paused(address account);
+    event Unpaused(address account);
 
-    function processRollup(
-        bytes calldata proofData,
-        bytes calldata signatures,
-        bytes calldata offchainTxData
-    ) external;
-
-    function depositPendingFunds(
-        uint256 assetId,
-        uint256 amount,
-        address owner,
-        bytes32 proofHash
-    ) external payable;
-
-    function depositPendingFundsPermit(
-        uint256 assetId,
-        uint256 amount,
-        address owner,
-        bytes32 proofHash,
-        address spender,
-        uint256 permitApprovalAmount,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external;
-
-    function receiveEthFromBridge(uint256 interactionNonce) external payable;
-
-    function setRollupProvider(address provderAddress, bool valid) external;
-
-    function approveProof(bytes32 _proofHash) external;
+    /*----------------------------------------
+      MUTATING FUNCTIONS
+      ----------------------------------------*/
 
     function pause() external;
 
-    function setDefiBridgeProxy(address feeDistributorAddress) external;
+    function unpause() external;
 
-    function setVerifier(address verifierAddress) external;
+    function setRollupProvider(address _provider, bool _valid) external;
 
-    function setSupportedAsset(
-        address linkedToken,
-        bool supportsPermit,
-        uint256 gasLimit
+    function setVerifier(address _verifier) external;
+
+    function setAllowThirdPartyContracts(bool _allowThirdPartyContracts) external;
+
+    function setDefiBridgeProxy(address _defiBridgeProxy) external;
+
+    function setSupportedAsset(address _token, uint256 _gasLimit) external;
+
+    function setSupportedBridge(address _bridge, uint256 _gasLimit) external;
+
+    function processRollup(bytes calldata _encodedProofData, bytes calldata _signatures) external;
+
+    function receiveEthFromBridge(uint256 _interactionNonce) external payable;
+
+    function approveProof(bytes32 _proofHash) external;
+
+    function depositPendingFunds(
+        uint256 _assetId,
+        uint256 _amount,
+        address _owner,
+        bytes32 _proofHash
+    ) external payable;
+
+    function offchainData(
+        uint256 _rollupId,
+        uint256 _chunk,
+        uint256 _totalChunks,
+        bytes calldata _offchainTxData
     ) external;
 
-    function setAssetPermitSupport(uint256 assetId, bool supportsPermit) external;
+    function processAsyncDefiInteraction(uint256 _interactionNonce) external returns (bool);
 
-    function setSupportedBridge(address linkedBridge, uint256 gasLimit) external;
+    /*----------------------------------------
+      NON-MUTATING FUNCTIONS
+      ----------------------------------------*/
 
-    function getSupportedAsset(uint256 assetId) external view returns (address);
+    function rollupStateHash() external view returns (bytes32);
 
-    function getSupportedAssets() external view returns (address[] memory);
+    function userPendingDeposits(uint256 _assetId, address _user) external view returns (uint256);
 
-    function getSupportedBridge(uint256 bridgeAddressId) external view returns (address);
+    function defiBridgeProxy() external view returns (address);
 
-    function getBridgeGasLimit(uint256 bridgeAddressId) external view returns (uint256);
+    function prevDefiInteractionsHash() external view returns (bytes32);
 
-    function getSupportedBridges() external view returns (address[] memory);
+    function paused() external view returns (bool);
 
-    function getAssetPermitSupport(uint256 assetId) external view returns (bool);
+    function verifier() external view returns (address);
+
+    function getDataSize() external view returns (uint256);
+
+    function getPendingDefiInteractionHashesLength() external view returns (uint256);
+
+    function getDefiInteractionHashesLength() external view returns (uint256);
+
+    function getAsyncDefiInteractionHashesLength() external view returns (uint256);
+
+    function getSupportedBridge(uint256 _bridgeAddressId) external view returns (address);
+
+    function getSupportedBridgesLength() external view returns (uint256);
+
+    function getSupportedAssetsLength() external view returns (uint256);
+
+    function getSupportedAsset(uint256 _assetId) external view returns (address);
 
     function getEscapeHatchStatus() external view returns (bool, uint256);
-
-    function getUserPendingDeposit(uint256 assetId, address userAddress) external view returns (uint256);
-
-    function processAsyncDefiInteraction(uint256 interactionNonce) external returns (bool);
-
-    function getDefiInteractionBlockNumber(uint256 interactionNonce) external view returns (uint256);
-
-    event DefiBridgeProcessed(
-        uint256 indexed bridgeId,
-        uint256 indexed nonce,
-        uint256 totalInputValue,
-        uint256 totalOutputValueA,
-        uint256 totalOutputValueB,
-        bool result
-    );
-    event AsyncDefiBridgeProcessed(
-        uint256 indexed bridgeId,
-        uint256 indexed nonce,
-        uint256 totalInputValue,
-        uint256 totalOutputValueA,
-        uint256 totalOutputValueB,
-        bool result
-    );
 }

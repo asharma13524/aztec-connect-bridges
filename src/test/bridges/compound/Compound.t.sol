@@ -1,239 +1,279 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright 2022 Spilsbury Holdings Ltd
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Aztec.
 pragma solidity >=0.8.4;
 
-import {Test} from "forge-std/Test.sol";
+import {BridgeTestBase} from "./../../aztec/base/BridgeTestBase.sol";
 import {AztecTypes} from "../../../aztec/libraries/AztecTypes.sol";
-import {DefiBridgeProxy} from "../../../aztec/DefiBridgeProxy.sol";
-import {RollupProcessor} from "../../../aztec/RollupProcessor.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ICERC20} from "../../../interfaces/compound/ICERC20.sol";
 import {CompoundBridge} from "../../../bridges/compound/CompoundBridge.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 
-contract CompoundTest is Test {
+contract CompoundTest is BridgeTestBase {
+    using SafeERC20 for IERC20;
+
+    struct Balances {
+        uint256 underlyingBefore;
+        uint256 underlyingMid;
+        uint256 underlyingEnd;
+        uint256 cBefore;
+        uint256 cMid;
+        uint256 cEnd;
+    }
+
     // solhint-disable-next-line
     address public constant cETH = 0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5;
 
-    address[] public cTokens = [
-        0xe65cdB6479BaC1e22340E4E755fAE7E509EcD06c, // cAAve
-        0x6C8c6b02E7b2BE14d4fA6022Dfd6d75921D90E4E, // cBAT
-        0x70e36f6BF80a52b3B46b3aF8e106CC0ed743E8e4, // cCOMP
-        0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643, // cDAI
-        0xFAce851a4921ce59e912d19329929CE6da6EB0c7, // cLINK
-        0x95b4eF2869eBD94BEb4eEE400a99824BF5DC325b, // cMKR
-        0x4B0181102A0112A2ef11AbEE5563bb4a3176c9d7, // cSUSHI
-        0x12392F67bdf24faE0AF363c24aC620a2f67DAd86, // cTUSD
-        0x35A18000230DA775CAc24873d00Ff85BccdeD550, // cUNI
-        0x39AA39c021dfbaE8faC545936693aC917d5E7563, // cUSDC
-        0x041171993284df560249B57358F931D9eB7b925D, // cUSDP
-        0xf650C3d88D12dB855b8bf7D11Be6C55A4e07dCC9, // cUSDT
-        0xccF4429DB6322D5C611ee964527D42E5d685DD6a, // cWBTC2
-        0x80a2AE356fc9ef4305676f7a3E2Ed04e12C33946, // cYFI
-        0xB3319f5D18Bc0D84dD1b4825Dcde5d5f7266d407 // cZRX
-    ];
-
-    DefiBridgeProxy internal defiBridgeProxy;
-    RollupProcessor internal rollupProcessor;
-
-    CompoundBridge internal compoundBridge;
+    CompoundBridge internal bridge;
+    uint256 internal id;
+    mapping(address => bool) internal isDeprecated;
 
     function setUp() public {
-        defiBridgeProxy = new DefiBridgeProxy();
-        rollupProcessor = new RollupProcessor(address(defiBridgeProxy));
-        compoundBridge = new CompoundBridge(address(rollupProcessor));
+        emit log_named_uint("block number", block.number);
+        bridge = new CompoundBridge(address(ROLLUP_PROCESSOR));
+        bridge.preApproveAll();
+        vm.label(address(bridge), "COMPOUND_BRIDGE");
+        vm.deal(address(bridge), 0);
+
+        vm.prank(MULTI_SIG);
+        ROLLUP_PROCESSOR.setSupportedBridge(address(bridge), 5000000);
+
+        id = ROLLUP_PROCESSOR.getSupportedBridgesLength();
+
+        isDeprecated[0x158079Ee67Fce2f58472A96584A73C7Ab9AC95c1] = true; // cREP - Augur v1
+        isDeprecated[0xC11b1268C1A384e55C48c2391d8d480264A3A7F4] = true; // legacy cWBTC token
+        isDeprecated[0xF5DCe57282A584D2746FaF1593d3121Fcac444dC] = true; // cSAI
     }
 
-    function testETHDepositAndWithdrawal(uint88 _depositAmount) public {
-        uint256 depositAmount;
-        {
-            uint8 underlyingDecimals = 18;
-            uint256 exchangeRate = ICERC20(cETH).exchangeRateCurrent();
-            uint256 oneCTokenInUnderlying = (exchangeRate * 1e18) / (10**(18 + underlyingDecimals - 8));
-            depositAmount = bound(_depositAmount, 10 * oneCTokenInUnderlying, 10000 * 10**underlyingDecimals);
-        }
-
-        vm.deal(address(rollupProcessor), depositAmount);
-
-        AztecTypes.AztecAsset memory empty;
-        AztecTypes.AztecAsset memory depositInputAssetA = AztecTypes.AztecAsset({
-            id: 1,
-            erc20Address: address(0x0000000000000000000000000000000000000000),
-            assetType: AztecTypes.AztecAssetType.ETH
-        });
-        AztecTypes.AztecAsset memory depositOutputAssetA = AztecTypes.AztecAsset({
-            id: 2,
-            erc20Address: cETH,
-            assetType: AztecTypes.AztecAssetType.ERC20
-        });
-
-        // cETH minting
-        (uint256 outputValueA, , ) = rollupProcessor.convert(
-            address(compoundBridge),
-            depositInputAssetA,
-            empty,
-            depositOutputAssetA,
-            empty,
-            depositAmount,
-            1,
-            0
-        );
-
-        assertGt(outputValueA, 0, "cETH received is zero");
-        assertEq(outputValueA, IERC20(cETH).balanceOf(address(rollupProcessor)), "cToken balance not matching");
-
-        uint256 redeemAmount = outputValueA;
-        AztecTypes.AztecAsset memory redeemInputAssetA = depositOutputAssetA;
-        AztecTypes.AztecAsset memory redeemOutputAssetA = depositInputAssetA;
-
-        // withdrawing ETH (cETH burning)
-        (outputValueA, , ) = rollupProcessor.convert(
-            address(compoundBridge),
-            redeemInputAssetA,
-            empty,
-            redeemOutputAssetA,
-            empty,
-            redeemAmount,
-            1,
-            1
-        );
-
-        // ETH withdrawn should be approximately equal to ETH deposited
-        // --> the amounts are not the same due to rounding errors in Compound
-        assertLt(
-            depositAmount - outputValueA,
-            1e10,
-            "amount of ETH withdrawn is not similar to the amount of ETH deposited"
-        );
-        assertLt(
-            IERC20(cETH).balanceOf(address(rollupProcessor)),
-            outputValueA,
-            "cEther balance not reduced by withdraw"
-        );
-    }
-
-    function testERC20DepositAndWithdrawal(uint88 _depositAmount) public {
-        // Note: if Foundry implements parametrized tests remove this for loop,
-        // stop calling setup() from _depositAndWithdrawERC20 and use the native
-        // functionality
+    function testPreApprove() public {
+        address[] memory cTokens = bridge.COMPTROLLER().getAllMarkets();
         for (uint256 i; i < cTokens.length; ++i) {
-            _depositAndWithdrawERC20(cTokens[i], _depositAmount);
+            bridge.preApprove(cTokens[i]);
+        }
+    }
+
+    function testPreApproveReverts() public {
+        address nonCTokenAddress = 0x3cD751E6b0078Be393132286c442345e5DC49699;
+
+        vm.expectRevert(CompoundBridge.MarketNotListed.selector);
+        bridge.preApprove(nonCTokenAddress);
+    }
+
+    function testPreApproveWhenAllowanceNotZero(uint256 _currentAllowance) public {
+        vm.assume(_currentAllowance > 0); // not using bound(...) here because the constraint is not strict
+        // Set allowances to _currentAllowance for all the cTokens and its underlying
+        address[] memory cTokens = bridge.COMPTROLLER().getAllMarkets();
+        vm.startPrank(address(bridge));
+        for (uint256 i; i < cTokens.length; ++i) {
+            ICERC20 cToken = ICERC20(cTokens[i]);
+            uint256 allowance = cToken.allowance(address(this), address(ROLLUP_PROCESSOR));
+            if (allowance < _currentAllowance) {
+                cToken.approve(address(ROLLUP_PROCESSOR), _currentAllowance - allowance);
+            }
+            if (address(cToken) != cETH) {
+                IERC20 underlying = IERC20(cToken.underlying());
+                // Using safeApprove(...) instead of approve(...) here because underlying can be Tether;
+                allowance = underlying.allowance(address(this), address(cToken));
+                if (allowance != type(uint256).max) {
+                    underlying.safeApprove(address(cToken), 0);
+                    underlying.safeApprove(address(cToken), type(uint256).max);
+                }
+                allowance = underlying.allowance(address(this), address(ROLLUP_PROCESSOR));
+                if (allowance != type(uint256).max) {
+                    underlying.safeApprove(address(ROLLUP_PROCESSOR), 0);
+                    underlying.safeApprove(address(ROLLUP_PROCESSOR), type(uint256).max);
+                }
+            }
+        }
+        vm.stopPrank();
+
+        // Verify that preApproveAll() doesn't fail
+        bridge.preApproveAll();
+    }
+
+    function testERC20DepositAndWithdrawal(uint88 _depositAmount, uint88 _redeemAmount) public {
+        address[] memory cTokens = bridge.COMPTROLLER().getAllMarkets();
+        for (uint256 i; i < cTokens.length; ++i) {
+            address cToken = cTokens[i];
+            if (!isDeprecated[cToken] && cToken != cETH) {
+                _depositAndWithdrawERC20(cToken, _depositAmount, _redeemAmount);
+            }
         }
     }
 
     function testInvalidCaller() public {
-        AztecTypes.AztecAsset memory empty;
-
         vm.expectRevert(ErrorLib.InvalidCaller.selector);
-        compoundBridge.convert(empty, empty, empty, empty, 0, 0, 0, address(0));
+        bridge.convert(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 0, address(0));
     }
 
     function testInvalidInputAsset() public {
-        AztecTypes.AztecAsset memory empty;
-
         AztecTypes.AztecAsset memory ethAsset = AztecTypes.AztecAsset({
             id: 1,
             erc20Address: address(0x0000000000000000000000000000000000000000),
             assetType: AztecTypes.AztecAssetType.ETH
         });
 
-        vm.prank(address(rollupProcessor));
+        vm.prank(address(ROLLUP_PROCESSOR));
         vm.expectRevert(ErrorLib.InvalidInputA.selector);
-        compoundBridge.convert(ethAsset, empty, empty, empty, 0, 0, 1, address(0));
+        bridge.convert(ethAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 1, address(0));
     }
 
     function testInvalidOutputAsset() public {
-        AztecTypes.AztecAsset memory empty;
-
-        vm.prank(address(rollupProcessor));
+        vm.prank(address(ROLLUP_PROCESSOR));
         vm.expectRevert(ErrorLib.InvalidOutputA.selector);
-        compoundBridge.convert(empty, empty, empty, empty, 0, 0, 0, address(0));
+        bridge.convert(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 0, address(0));
     }
 
     function testIncorrectAuxData() public {
-        AztecTypes.AztecAsset memory empty;
-
-        vm.prank(address(rollupProcessor));
+        vm.prank(address(ROLLUP_PROCESSOR));
         vm.expectRevert(ErrorLib.InvalidAuxData.selector);
-        compoundBridge.convert(empty, empty, empty, empty, 0, 0, 2, address(0));
+        bridge.convert(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 2, address(0));
     }
 
     function testFinalise() public {
-        AztecTypes.AztecAsset memory empty;
-
-        vm.prank(address(rollupProcessor));
+        vm.prank(address(ROLLUP_PROCESSOR));
         vm.expectRevert(ErrorLib.AsyncDisabled.selector);
-        compoundBridge.finalise(empty, empty, empty, empty, 0, 0);
+        bridge.finalise(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0);
     }
 
-    function _depositAndWithdrawERC20(address _cToken, uint256 _depositAmount) private {
-        setUp();
-        address underlyingToken = ICERC20(_cToken).underlying();
-        uint256 depositAmount;
-        {
-            uint8 underlyingDecimals = 18;
-            uint256 exchangeRate = ICERC20(_cToken).exchangeRateCurrent();
-            uint256 oneCTokenInUnderlying = (exchangeRate * 1e18) / (10**(18 + underlyingDecimals - 8));
-            depositAmount = bound(_depositAmount, 10 * oneCTokenInUnderlying, 10000 * 10**underlyingDecimals);
-        }
+    function testETHDepositAndWithdrawal(uint256 _depositAmount, uint256 _redeemAmount) public {
+        _addSupportedIfNotAdded(cETH);
 
-        deal(underlyingToken, address(rollupProcessor), depositAmount);
+        Balances memory bals;
 
-        AztecTypes.AztecAsset memory empty;
-        AztecTypes.AztecAsset memory depositInputAssetA = AztecTypes.AztecAsset({
-            id: 1,
-            erc20Address: underlyingToken,
-            assetType: AztecTypes.AztecAssetType.ERC20
-        });
-        AztecTypes.AztecAsset memory depositOutputAssetA = AztecTypes.AztecAsset({
-            id: 2,
-            erc20Address: _cToken,
-            assetType: AztecTypes.AztecAssetType.ERC20
-        });
+        (uint256 depositAmount, uint256 mintAmount) = _getDepositAndMintAmounts(cETH, _depositAmount);
+        vm.deal(address(ROLLUP_PROCESSOR), depositAmount);
 
-        // cToken minting
-        (uint256 outputValueA, , ) = rollupProcessor.convert(
-            address(compoundBridge),
+        AztecTypes.AztecAsset memory depositInputAssetA = getRealAztecAsset(address(0));
+        AztecTypes.AztecAsset memory depositOutputAssetA = getRealAztecAsset(cETH);
+
+        bals.underlyingBefore = address(ROLLUP_PROCESSOR).balance;
+        bals.cBefore = IERC20(cETH).balanceOf(address(ROLLUP_PROCESSOR));
+
+        uint256 inBridgeCallData = encodeBridgeCallData(
+            id,
             depositInputAssetA,
-            empty,
+            emptyAsset,
             depositOutputAssetA,
-            empty,
-            depositAmount,
-            0,
+            emptyAsset,
             0
         );
+        vm.expectEmit(true, true, false, true);
+        emit DefiBridgeProcessed(inBridgeCallData, getNextNonce(), depositAmount, mintAmount, 0, true, "");
+        sendDefiRollup(inBridgeCallData, depositAmount);
 
-        assertGt(outputValueA, 0, "cToken received is zero");
-        assertEq(outputValueA, IERC20(_cToken).balanceOf(address(rollupProcessor)), "cToken balance not matching");
+        uint256 redeemAmount = bound(_redeemAmount, 1, mintAmount);
+        uint256 redeemedAmount = _getRedeemedAmount(cETH, redeemAmount);
+        bals.underlyingMid = address(ROLLUP_PROCESSOR).balance;
+        bals.cMid = IERC20(cETH).balanceOf(address(ROLLUP_PROCESSOR));
 
-        uint256 redeemAmount = outputValueA;
-        AztecTypes.AztecAsset memory redeemInputAssetA = depositOutputAssetA;
-        AztecTypes.AztecAsset memory redeemOutputAssetA = depositInputAssetA;
-
-        // withdrawing underlying (cToken burning)
-        (outputValueA, , ) = rollupProcessor.convert(
-            address(compoundBridge),
-            redeemInputAssetA,
-            empty,
-            redeemOutputAssetA,
-            empty,
-            redeemAmount,
-            1,
+        uint256 outBridgeCallData = encodeBridgeCallData(
+            id,
+            depositOutputAssetA,
+            emptyAsset,
+            depositInputAssetA,
+            emptyAsset,
             1
         );
+        vm.expectEmit(true, true, false, true);
+        emit DefiBridgeProcessed(outBridgeCallData, getNextNonce(), redeemAmount, redeemedAmount, 0, true, "");
+        sendDefiRollup(outBridgeCallData, redeemAmount);
 
-        // token withdrawn should be approximately equal to token deposited
-        // --> the amounts are not exactly the same due to rounding errors in Compound
-        assertLt(
-            depositAmount - outputValueA,
-            1e10,
-            "amount of underlying Token withdrawn is not similar to the amount of cToken deposited"
+        bals.underlyingEnd = address(ROLLUP_PROCESSOR).balance;
+        bals.cEnd = IERC20(cETH).balanceOf(address(ROLLUP_PROCESSOR));
+
+        assertEq(bals.underlyingMid, bals.underlyingBefore - depositAmount, "ether bal dont match after deposit");
+        assertEq(bals.underlyingEnd, bals.underlyingMid + redeemedAmount, "ether bal dont match after withdrawal");
+        assertEq(bals.cMid, bals.cBefore + mintAmount, "cEther bal dont match after deposit");
+        assertEq(bals.cEnd, bals.cMid - redeemAmount, "cEther bal dont match after withdrawal");
+    }
+
+    function _depositAndWithdrawERC20(
+        address _cToken,
+        uint256 _depositAmount,
+        uint256 _redeemAmount
+    ) internal {
+        address underlyingToken = ICERC20(_cToken).underlying();
+        _addSupportedIfNotAdded(underlyingToken);
+        _addSupportedIfNotAdded(_cToken);
+
+        Balances memory bals;
+
+        (uint256 depositAmount, uint256 mintAmount) = _getDepositAndMintAmounts(_cToken, _depositAmount);
+
+        deal(underlyingToken, address(ROLLUP_PROCESSOR), depositAmount);
+
+        AztecTypes.AztecAsset memory depositInputAssetA = getRealAztecAsset(underlyingToken);
+        AztecTypes.AztecAsset memory depositOutputAssetA = getRealAztecAsset(address(_cToken));
+
+        bals.underlyingBefore = IERC20(underlyingToken).balanceOf(address(ROLLUP_PROCESSOR));
+        bals.cBefore = IERC20(_cToken).balanceOf(address(ROLLUP_PROCESSOR));
+
+        uint256 inBridgeCallData = encodeBridgeCallData(
+            id,
+            depositInputAssetA,
+            emptyAsset,
+            depositOutputAssetA,
+            emptyAsset,
+            0
         );
-        assertLt(
-            IERC20(_cToken).balanceOf(address(rollupProcessor)),
-            outputValueA,
-            "balance not decreased by withdraw"
+        vm.expectEmit(true, true, false, true);
+        emit DefiBridgeProcessed(inBridgeCallData, getNextNonce(), depositAmount, mintAmount, 0, true, "");
+        sendDefiRollup(inBridgeCallData, depositAmount);
+
+        uint256 redeemAmount = bound(_redeemAmount, 1, mintAmount);
+        uint256 redeemedAmount = _getRedeemedAmount(_cToken, redeemAmount);
+        bals.underlyingMid = IERC20(underlyingToken).balanceOf(address(ROLLUP_PROCESSOR));
+        bals.cMid = IERC20(_cToken).balanceOf(address(ROLLUP_PROCESSOR));
+
+        uint256 outBridgeCallData = encodeBridgeCallData(
+            id,
+            depositOutputAssetA,
+            emptyAsset,
+            depositInputAssetA,
+            emptyAsset,
+            1
         );
+        vm.expectEmit(true, true, false, true);
+        emit DefiBridgeProcessed(outBridgeCallData, getNextNonce(), redeemAmount, redeemedAmount, 0, true, "");
+        sendDefiRollup(outBridgeCallData, redeemAmount);
+
+        bals.underlyingEnd = IERC20(underlyingToken).balanceOf(address(ROLLUP_PROCESSOR));
+        bals.cEnd = IERC20(_cToken).balanceOf(address(ROLLUP_PROCESSOR));
+
+        assertEq(bals.underlyingMid, bals.underlyingBefore - depositAmount, "token bal dont match after deposit");
+        assertEq(bals.underlyingEnd, bals.underlyingMid + redeemedAmount, "token bal dont match after withdrawal");
+        assertEq(bals.cMid, bals.cBefore + mintAmount, "cToken bal dont match after deposit");
+        assertEq(bals.cEnd, bals.cMid - redeemAmount, "cToken bal dont match after withdrawal");
+    }
+
+    function _getDepositAndMintAmounts(address _cToken, uint256 _depositAmount) internal returns (uint256, uint256) {
+        uint256 underlyingDecimals = 18;
+        if (_cToken != cETH) {
+            address underlyingToken = ICERC20(_cToken).underlying();
+            underlyingDecimals = IERC20Metadata(underlyingToken).decimals();
+        }
+
+        uint256 exchangeRate = ICERC20(_cToken).exchangeRateCurrent();
+        uint256 min = 10**underlyingDecimals / 100;
+        uint256 max = 10000 * 10**underlyingDecimals;
+        uint256 depositAmount = bound(_depositAmount, min, max);
+        uint256 mintAmount = (depositAmount * 1e18) / exchangeRate;
+
+        return (depositAmount, mintAmount);
+    }
+
+    function _getRedeemedAmount(address _cToken, uint256 _redeemAmount) internal returns (uint256) {
+        uint256 exchangeRate = ICERC20(_cToken).exchangeRateCurrent();
+        return (_redeemAmount * exchangeRate) / 1e18;
+    }
+
+    function _addSupportedIfNotAdded(address _asset) internal {
+        if (!isSupportedAsset(_asset)) {
+            vm.prank(MULTI_SIG);
+            ROLLUP_PROCESSOR.setSupportedAsset(_asset, 200000);
+        }
     }
 }

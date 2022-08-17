@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright 2022 Spilsbury Holdings Ltd
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Aztec.
 pragma solidity >=0.8.4;
 
 import {IDefiBridge} from "../../aztec/interfaces/IDefiBridge.sol";
@@ -70,5 +70,20 @@ abstract contract BridgeBase is IDefiBridge {
         )
     {
         revert ErrorLib.AsyncDisabled();
+    }
+
+    /**
+     * @notice Computes the criteria that is passed on to the subsidy contract when claiming
+     * @dev Should be overridden by bridge implementation if intended to limit subsidy.
+     * @return The criteria to be passed along
+     */
+    function computeCriteria(
+        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata,
+        uint64
+    ) public view virtual returns (uint256) {
+        return 0;
     }
 }
