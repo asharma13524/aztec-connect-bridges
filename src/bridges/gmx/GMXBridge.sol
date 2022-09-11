@@ -32,8 +32,11 @@ contract GmxBridge is BridgeBase {
     IGmxVault public constant GMX_VAULT = IGmxVault(0x489ee077994B6658eAfA855C308275EAd8097C4A);
 
     // Arbitrum Inbox address for sending messages to Arbitrum L2
-    IArbitrumInbox public constant ARBITRUM_INBOX = IArbitrumInbox(0x4c6f947Ae67F572afa4ae0730947DE7C874F95Ef);
+    // mainnet 0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f
+    // goerli = 0x6BEbC4925716945D46F0Ec336D5C2564F419682C
+    IArbitrumInbox public constant ARBITRUM_INBOX = IArbitrumInbox(0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f);
 
+    // TODO: change addresses to rinkeby...
     // Arbitrum Outbox Address for executing messages back on L1
     IArbitrumOutbox public constant ARBITRUM_OUTBOX = IArbitrumOutbox(0x4c6f947Ae67F572afa4ae0730947DE7C874F95Ef);
 
@@ -52,7 +55,7 @@ contract GmxBridge is BridgeBase {
         address _rollupProcessor,
         address _gmxRouter,
         address _inbox,
-        address _arbSys,
+        address _arbsys,
         address _outbox
     ) BridgeBase(_rollupProcessor) {}
 
@@ -116,7 +119,7 @@ contract GmxBridge is BridgeBase {
             bool isAsync
         )
     {
-        // open position
+        // long position
         if (_auxData == 0) {
             // collateral provided in either USDC || ETH
             if (_inputAssetA.erc20Address != address(USDC) && _inputAssetA.assetType != AztecTypes.AztecAssetType.ETH){
@@ -131,8 +134,31 @@ contract GmxBridge is BridgeBase {
             // inputAssetA == collateralToken (USDC || ETH)
             // multiple input assets, (collateralToken, indexToken, sizeDelta, isLong)
 
+            // TODO: Figure out all the inputs and how they can come into the convert function (size delta ??)
+            // TODO: Figure out how to set all the parameters in the createRetryableTicket function call
             // TODO: Figure out arbitrum node integration
-            uint256 ticketId = sendTxnToL2(_inputAssetA.erc20Address, _inputAssetB.erc20Address, _inputValue, true, 2000, 20000, 5000);
+            // TODO: Figure out gas costs
+            // gasUsed = gasUsedL1 + gasUsedL2(not a field) so
+            // gasPaid = gasUsed * effectiveGasPrice
+            // gasPaidL1 = gasUsedL1 * effectiveGasPrice
+            // gasPaidL2 = (gasUsed - gasUsedL1) * effectiveGasPrice
+
+            uint256 ticketId = sendTxnToL2(msg.value, _inputAssetA.erc20Address, _inputAssetB.erc20Address, _inputValue, true, 2000, 20000, 5000);
+
+        }
+        // short position
+        else if (_auxData == 1) {
+             // collateral provided in either USDC || ETH
+            if (_inputAssetA.erc20Address != address(USDC) && _inputAssetA.assetType != AztecTypes.AztecAssetType.ETH){
+                revert ErrorLib.InvalidInputA();
+            }
+
+            // operation in asynchronous
+            isAsync = true;
+            outputValueA = 0;
+            outputValueB = 0;
+
+            uint256 ticketId = sendTxnToL2(msg.value, _inputAssetA.erc20Address, _inputAssetB.erc20Address, _inputValue, false, 2000, 20000, 5000);
         }
         // Approve Router Contract
         // Open/Increase Position
@@ -144,27 +170,26 @@ contract GmxBridge is BridgeBase {
         // IERC20(_inputAssetA.erc20Address).approve(ROLLUP_PROCESSOR, _inputValue);
     }
 
+    //
+    function redeemTxOnL2() public payable {
+        // call to ArbRetryableTx.redeem(tx-id) in case of failure/unhappy case
+        return;
+    }
 
-    function sendTxnToL2 (address _collateralAsset, address _indexAsset, uint256 _sizeDelta, bool _isLong, uint256 maxSubmissionCost, uint256 maxGas, uint256 gasPriceBid) public payable returns (uint256) {
-        bytes memory callData = abi.encodeWithSignature("pluginIncreasePosition((address, address, address, uint256, bool))",
+    function sendTxnToL2 (uint256 _depositAmount, address _collateralAsset, address _indexAsset, uint256 _sizeDelta, bool _isLong, uint256 maxSubmissionCost, uint256 maxGas, uint256 gasPriceBid) public payable returns (uint256) {
+        // TODO: use abi.encodeCall since it's safer (if possible), abi.encodeError also (type, typo safe, compiler will catch it)
+        bytes memory callData = abi.encodeWithSignature("pluginIncreasePosition(address,address,address,uint256,bool)",
             address(this),
             _collateralAsset,
             _indexAsset,
             _sizeDelta,
             _isLong);
-        console.log(_collateralAsset, "ca");
-        console.log(_indexAsset, "ia");
-        console.log(_sizeDelta, "sd");
-        console.log(_isLong, "long");
-        console.logBytes(callData);
-
         /*
         If the L2 account's balance (which now includes the DepositValue) is less than MaxSubmissionCost + Callvalue, the Retryable Ticket creation fails.
         If MaxSubmissionCost is less than the submission fee, the Retryable Ticket creation fails.
         */
-        uint256 ticketId = ARBITRUM_INBOX.createRetryableTicket{ value: msg.value }(address(GMX_ROUTER), 0, 1000, msg.sender, msg.sender, 20000, 10000, callData);
-        console.log("TICKET");
-
+        // address(this) == 0xce71065d4017f316ec606fe4422e11eb2c47c246
+        uint256 ticketId = ARBITRUM_INBOX.createRetryableTicket{ value: _depositAmount }(address(GMX_ROUTER), 0, 1e18, msg.sender, msg.sender, 2e18, 0, callData);
         return ticketId;
         // address destAddr,
         // uint256 arbTxCallValue,
@@ -173,5 +198,66 @@ contract GmxBridge is BridgeBase {
         // address valueRefundAddress,
         // uint256 maxGas,
         // uint256 gasPriceBid,
+    }
+
+    /*
+  @dev This function is called from the RollupProcessor.sol contract via the DefiBridgeProxy.
+    It receives the aggreagte sum of all users funds for the input assets.
+  @param AztecAsset inputAssetA a struct detailing the first input asset,
+    this will always be set
+  @param AztecAsset inputAssetB an optional struct detailing the second input asset,
+    this is used for repaying borrows and should be virtual
+  @param AztecAsset outputAssetA a struct detailing the first output asset,
+    this will always be set
+  @param AztecAsset outputAssetB a struct detailing an optional second output asset
+  @param uint256 interactionNonce
+  @param uint64 auxData other data to be passed into the bridge contract (slippage / nftID etc)
+  @return uint256 outputValueA the return value of output asset A
+  @return uint256 outputValueB optional return value of output asset B
+  @dev this function should have a modifier on it to ensure
+    it can only be called by the Rollup Contract
+  */
+
+  function canInteractionBeFinalised() public payable {
+      // check if proof window has passed
+      return;
+  }
+
+
+  /**
+     * @dev Function to finalise an interaction
+     * Converts the held amount of tranche asset for the given interaction into the output asset
+     * @param interactionNonce The nonce value for the interaction that should be finalised
+     */
+    function finalise(
+        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata,
+        AztecTypes.AztecAsset calldata outputAssetA,
+        AztecTypes.AztecAsset calldata,
+        uint256 interactionNonce,
+        uint64
+    )
+        external
+        payable
+        override(BridgeBase)
+        onlyRollup
+        returns (
+            uint256 outputValueA,
+            uint256 outputValueB,
+            bool interactionCompleted
+        )
+    {
+
+        // operation in asynchronous
+        interactionCompleted = true;
+        outputValueA = 0;
+        outputValueB = 0;
+        return (outputValueA, outputValueB, interactionCompleted);
+
+
+    // has the fraud proof window passed ?
+    // Arbsys.sendTxToL1()
+    // call NodeInterface.lookupMessageBatchProof
+    // call Outbox.executeTransaction
     }
 }

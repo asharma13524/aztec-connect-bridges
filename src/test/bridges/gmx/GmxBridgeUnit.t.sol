@@ -15,12 +15,15 @@ import "forge-std/console.sol";
 
 
 contract GmxBridgeUnitTest is Test {
-    IArbitrumInbox public constant ARBITRUM_INBOX = IArbitrumInbox(0x4c6f947Ae67F572afa4ae0730947DE7C874F95Ef);
+    IArbitrumInbox public constant ARBITRUM_INBOX = IArbitrumInbox(0x6BEbC4925716945D46F0Ec336D5C2564F419682C);
     IERC20 public constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
     // USDC address for deposits
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant GMX_ROUTER = 0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064;
-    address public constant ARBINBOX = 0x9685e7281Fb1507B6f141758d80B08752faF0c43;
+    // goerli inbox
+    // mainnet 0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f
+    // goerli = 0x6BEbC4925716945D46F0Ec336D5C2564F419682C
+    address public constant ARBINBOX = 0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f;
     address public constant ARBSYS = 0x0000000000000000000000000000000000000064;
     address public constant ARBOUTBOX = 0x667e23ABd27E623c11d4CC00ca3EC4d0bD63337a;
 
@@ -30,37 +33,43 @@ contract GmxBridgeUnitTest is Test {
     address private rollupProcessor;
     GmxBridge private bridge;
 
+    // the identifiers of the forks
+    uint256 ethGoerliFork;
+    uint256 arbGoerliFork;
+
     function setUp() public {
         rollupProcessor = address(this);
 
         bridge = new GmxBridge(rollupProcessor, GMX_ROUTER, ARBINBOX, ARBSYS, ARBOUTBOX);
         vm.label(address(bridge), "GMX_BRIDGE");
-        vm.deal(address(bridge), 0);
-
+        // create eth fork
+        // ethGoerliFork = vm.createFork('https://eth-goerli.g.alchemy.com/v2/whc5dn9BJ6uzQMX8CQeWTtk5B4NzeqRn');
+        // create arbitrum fork
+        // arbGoerliFork = vm.createFork("https://arb-goerli.g.alchemy.com/v2/GbcDRfg_bvQFL3urOI77lPKmSi0p3UJb");
         // rollupProcessor.setBridgeGasLimit(address(bridge), 100000);
     }
 
+    // TODO: change this function around to test empty assets
     function testErrorCodes() public {
-        address callerAddress = address(bytes20(uint160(uint256(keccak256("non-rollup-processor-address")))));
+       vm.expectRevert(ErrorLib.InvalidInputA.selector);
+       bridge.convert(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 0, address(0));
+   }
 
-        vm.prank(callerAddress);
-        vm.expectRevert(ErrorLib.InvalidCaller.selector);
-        bridge.convert(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 0, address(0));
-    }
-
-    function testInvalidCaller(address _callerAddress) public {
+   function testInvalidCaller(address _callerAddress) public {
         vm.assume(_callerAddress != rollupProcessor);
         // Use HEVM cheatcode to call from a different address than is address(this)
-        vm.prank(_callerAddress);
         vm.expectRevert(ErrorLib.InvalidCaller.selector);
+        vm.prank(_callerAddress);
         bridge.convert(emptyAsset, emptyAsset, emptyAsset, emptyAsset, 0, 0, 0, address(0));
-    }
+   }
 
-    function testExampleBridge() public {
-        uint256 depositAmount = 4;
-        // Mint the depositAmount of Dai to rollupProcessor
+   function testInboxL2Call() public {
+        // deposit amount
+        uint256 depositAmount = 2 ether;
+        vm.deal(address(bridge), depositAmount * 5);
+        uint256 inputValue = 5;
+
         AztecTypes.AztecAsset memory empty;
-        // TODO: Function reverting because not sending msg.value, do that now.
         // will have to bound
 
         AztecTypes.AztecAsset memory inputAssetA = AztecTypes.AztecAsset({
@@ -79,8 +88,35 @@ contract GmxBridgeUnitTest is Test {
             assetType: AztecTypes.AztecAssetType.ERC20
         });
 
-    //     // Disabling linting errors here to show return variables
-    //     // solhint-disable-next-line
+        uint256 ticketId = bridge.sendTxnToL2(depositAmount, inputAssetA.erc20Address,  inputAssetB.erc20Address, inputValue, true, 2000, 20000, 5000);
+    }
+
+    function testExampleBridge() public {
+        // tests deploy to 0xb4c79dab8f259c7aee6e5b2aa729821864227e84
+        uint256 depositAmount = 2 ether;
+        vm.deal(address(bridge), depositAmount * 5);
+        // Mint the depositAmount of Dai to rollupProcessor
+        AztecTypes.AztecAsset memory empty;
+        // will have to bound
+
+        AztecTypes.AztecAsset memory inputAssetA = AztecTypes.AztecAsset({
+            id: 1,
+            erc20Address: address(USDC),
+            assetType: AztecTypes.AztecAssetType.ERC20
+        });
+        AztecTypes.AztecAsset memory inputAssetB = AztecTypes.AztecAsset({
+            id: 1,
+            erc20Address: address(DAI),
+            assetType: AztecTypes.AztecAssetType.ERC20
+        });
+        AztecTypes.AztecAsset memory outputAsset = AztecTypes.AztecAsset({
+            id: 1,
+            erc20Address: address(DAI),
+            assetType: AztecTypes.AztecAssetType.ERC20
+        });
+
+        // Disabling linting errors here to show return variables
+        // solhint-disable-next-line
         (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert{value: depositAmount}(
             inputAssetA,
             inputAssetB,
@@ -88,7 +124,7 @@ contract GmxBridgeUnitTest is Test {
             empty,
             depositAmount,
             0,
-            0,
+            1,
             address(0)
         );
     }
