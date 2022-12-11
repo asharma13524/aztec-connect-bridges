@@ -4,6 +4,7 @@ pragma solidity >=0.8.4;
 
 import "./IVaultUtils.sol";
 
+// https://arbiscan.io/address/0x489ee077994B6658eAfA855C308275EAd8097C4A#code
 interface IGmxVault {
     function isInitialized() external view returns (bool);
     function isSwapEnabled() external view returns (bool);

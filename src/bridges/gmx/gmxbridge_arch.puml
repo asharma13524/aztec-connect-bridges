@@ -1,0 +1,36 @@
+@startuml arb-architecture
+
+title Aztec Gmx Connect Bridge
+
+
+
+NucleoClient -> AztecRollupContract: Buy 1 GMX call
+
+rnote over NucleoClient, AztecRollupContract
+calc proof, send to rollup
+endrnote
+
+activate AztecRollupContract
+
+AztecRollupContract -> EthBridgeInboxContract
+
+rnote over AztecRollupContract, EthBridgeInboxContract
+call to Arb L1 inbox
+endrnote
+
+EthBridgeInboxContract -> GmxContract:
+rnote over EthBridgeInboxContract, GmxContract
+redemptionTxId = Inbox.createRetryableTicket(...)
+endrnote
+
+ArbSys -> EthBridgeOutboxContract: ArbSys.sendTxToL1() (after 7 day window)
+rnote over ArbSys, EthBridgeOutboxContract
+OutboxEntryCreated, Published on L1
+endrnote
+
+EthBridgeOutboxContract -> AztecRollupContract:
+rnote over EthBridgeOutboxContract, AztecRollupContract
+Outbox.executeTransaction(...) <-lookupMessageBatchProof()
+endrnote
+
+@enduml

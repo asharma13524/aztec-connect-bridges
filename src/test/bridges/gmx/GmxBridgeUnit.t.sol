@@ -12,6 +12,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {GmxBridge} from "../../../bridges/gmx/GmxBridge.sol";
 import {ErrorLib} from "../../../bridges/base/ErrorLib.sol";
 import "forge-std/console.sol";
+import {L2Gmx} from "../../../bridges/gmx/L2Contract.sol";
 
 
 contract GmxBridgeUnitTest is Test {
@@ -26,6 +27,7 @@ contract GmxBridgeUnitTest is Test {
     address public constant ARBINBOX = 0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f;
     address public constant ARBSYS = 0x0000000000000000000000000000000000000064;
     address public constant ARBOUTBOX = 0x667e23ABd27E623c11d4CC00ca3EC4d0bD63337a;
+    // address public constant L2GMX = 0xbbc18b580256a82dc0f9a86152b8b22e7c1c8005;
 
     AztecTypes.AztecAsset internal emptyAsset;
 
@@ -33,19 +35,15 @@ contract GmxBridgeUnitTest is Test {
     address private rollupProcessor;
     GmxBridge private bridge;
 
-    // the identifiers of the forks
-    uint256 ethGoerliFork;
-    uint256 arbGoerliFork;
-
     function setUp() public {
         rollupProcessor = address(this);
 
         bridge = new GmxBridge(rollupProcessor, GMX_ROUTER, ARBINBOX, ARBSYS, ARBOUTBOX);
         vm.label(address(bridge), "GMX_BRIDGE");
-        // create eth fork
-        // ethGoerliFork = vm.createFork('https://eth-goerli.g.alchemy.com/v2/whc5dn9BJ6uzQMX8CQeWTtk5B4NzeqRn');
+
         // create arbitrum fork
-        // arbGoerliFork = vm.createFork("https://arb-goerli.g.alchemy.com/v2/GbcDRfg_bvQFL3urOI77lPKmSi0p3UJb");
+        string memory MAINNET_RPC_URL = vm.envString('MAINNET_RPC_URL');
+        uint256 ethMainnet = vm.createFork(MAINNET_RPC_URL);
         // rollupProcessor.setBridgeGasLimit(address(bridge), 100000);
     }
 
@@ -128,4 +126,70 @@ contract GmxBridgeUnitTest is Test {
             address(0)
         );
     }
+
+    function testEndToEnd() public {
+        // tests deploy to 0xb4c79dab8f259c7aee6e5b2aa729821864227e84
+        uint256 depositAmount = 2 ether;
+        vm.deal(address(bridge), depositAmount * 5);
+        // Mint the depositAmount of Dai to rollupProcessor
+        AztecTypes.AztecAsset memory empty;
+        // will have to bound
+
+        AztecTypes.AztecAsset memory inputAssetA = AztecTypes.AztecAsset({
+            id: 1,
+            erc20Address: address(USDC),
+            assetType: AztecTypes.AztecAssetType.ERC20
+        });
+        AztecTypes.AztecAsset memory inputAssetB = AztecTypes.AztecAsset({
+            id: 1,
+            erc20Address: address(DAI),
+            assetType: AztecTypes.AztecAssetType.ERC20
+        });
+        AztecTypes.AztecAsset memory outputAsset = AztecTypes.AztecAsset({
+            id: 1,
+            erc20Address: address(DAI),
+            assetType: AztecTypes.AztecAssetType.ERC20
+        });
+
+        // Disabling linting errors here to show return variables
+        // solhint-disable-next-line
+        (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert{value: depositAmount}(
+            inputAssetA,
+            inputAssetB,
+            outputAsset,
+            empty,
+            depositAmount,
+            0,
+            1,
+            address(0)
+        );
+
+        // wait a few blocks
+        
+
+
+        // call finalize, push back to L1 Contract
+    }
+
+         // create eth fork
+    //     string memory ARBITRUM_RPC_URL = vm.envString('ARBITRUM_RPC_URL');
+    //     uint256 arbMainnet = vm.createFork(ARBITRUM_RPC_URL);
+
+    //     vm.selectFork(arbMainnet);
+
+    //     address[] memory _path;
+    //     L2GMX.increasePosition{value: depositAmount}
+    //     (
+    //         _path,
+    //         inputAssetA,
+    //         0,
+    //         1,
+    //         10,
+    //         true,
+    //         1500,
+    //         2,
+    //         bytes32("0x"),
+    //         address(this));
+    // }
+
 }

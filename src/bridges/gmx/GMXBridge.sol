@@ -14,10 +14,14 @@ import {IArbitrumInbox} from "src/interfaces/arbitrum/IInbox.sol";
 import {IGmxRouter} from "src/interfaces/gmx/IRouter.sol";
 import {IGmxVault} from "src/interfaces/gmx/IVault.sol";
 
+import {IGmxPositionRouter} from "src/interfaces/gmx/IPositionRouter.sol";
+
 import {IArbitrumOutbox} from "src/interfaces/arbitrum/IOutbox.sol";
 import {ArbSys} from "src/interfaces/arbitrum/IArbSys.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "forge-std/console.sol";
+
+import {L2Gmx} from "src/bridges/gmx/L2Contract.sol";
 
 contract GmxBridge is BridgeBase {
     using SafeERC20 for IERC20;
@@ -25,11 +29,16 @@ contract GmxBridge is BridgeBase {
     error InvalidCaller();
     error AsyncModeDisabled();
 
+    L2Gmx public constant L2_CONTRACT = L2Gmx(0x67d269191c92Caf3cD7723F116c85e6E9bf55933);
+
     // GMX Router address for opening/closing positions
     IGmxRouter public constant GMX_ROUTER = IGmxRouter(0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064);
 
+    // GMX PositionRouter to Manage Positions
+    IGmxPositionRouter public constant GMX_POSITION_ROUTER = IGmxPositionRouter(0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868);
+
     // Vault for additional functionality, contains whitelisted tokens
-    IGmxVault public constant GMX_VAULT = IGmxVault(0x489ee077994B6658eAfA855C308275EAd8097C4A);
+    // IGmxVault public constant GMX_VAULT = IGmxVault(0x489ee077994B6658eAfA855C308275EAd8097C4A);
 
     // Arbitrum Inbox address for sending messages to Arbitrum L2
     // mainnet 0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f
@@ -40,13 +49,11 @@ contract GmxBridge is BridgeBase {
     // Arbitrum Outbox Address for executing messages back on L1
     IArbitrumOutbox public constant ARBITRUM_OUTBOX = IArbitrumOutbox(0x4c6f947Ae67F572afa4ae0730947DE7C874F95Ef);
 
-    // ArbSys Address for publishing messages on Arbitrum L2
-    ArbSys public constant ARBSYS = ArbSys(0x0000000000000000000000000000000000000064);
+    // // ArbSys Address for publishing messages on Arbitrum L2
+    // ArbSys public constant ARBSYS = ArbSys(0x0000000000000000000000000000000000000064);
 
     // USDC address for deposits
     address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-
-
 
     // test greeting string
     string greeting;
@@ -61,42 +68,42 @@ contract GmxBridge is BridgeBase {
 
     receive() external payable {}
 
-    /**
-     * @notice Set all the necessary approvals for all the latests vaults for the tokens supported by Yearn
-     */
-    function preApproveAll() external {
-        uint256 numTokens = GMX_VAULT.whitelistedTokenCount();
-        for (uint256 i; i < numTokens; ) {
-            address token = GMX_VAULT.allWhitelistedTokens(i);
-            _preApprove(address(GMX_ROUTER), token);
-            unchecked {
-                ++i;
-            }
-        }
-    }
+    // /**
+    //  * @notice Set all the necessary approvals for all the latests vaults for the tokens supported by Yearn
+    //  */
+    // function preApproveAll() external {
+    //     uint256 numTokens = GMX_VAULT.whitelistedTokenCount();
+    //     for (uint256 i; i < numTokens; ) {
+    //         address token = GMX_VAULT.allWhitelistedTokens(i);
+    //         _preApprove(address(GMX_ROUTER), token);
+    //         unchecked {
+    //             ++i;
+    //         }
+    //     }
+    // }
 
-    /**
-     * @notice Perform all the necessary approvals for a given vault and its underlying.
-     * @param _token - address of the token to approve
-     */
-    function _preApprove(address _gmxRouter, address _token) private {
-        // Using safeApprove(...) instead of approve(...) here because underlying can be Tether;
-        uint256 allowance = IERC20(_token).allowance(address(this), _gmxRouter);
-        if (allowance != type(uint256).max) {
-            // Resetting allowance to 0 in order to avoid issues with USDT
-            IERC20(_token).safeApprove(_gmxRouter, 0);
-            IERC20(_token).safeApprove(_gmxRouter, type(uint256).max);
-        }
+    // /**
+    //  * @notice Perform all the necessary approvals for a given vault and its underlying.
+    //  * @param _token - address of the token to approve
+    //  */
+    // // function _preApprove(address _gmxRouter, address _token) private {
+    // //     // Using safeApprove(...) instead of approve(...) here because underlying can be Tether;
+    // //     uint256 allowance = IERC20(_token).allowance(address(this), _gmxRouter);
+    // //     if (allowance != type(uint256).max) {
+    // //         // Resetting allowance to 0 in order to avoid issues with USDT
+    // //         IERC20(_token).safeApprove(_gmxRouter, 0);
+    // //         IERC20(_token).safeApprove(_gmxRouter, type(uint256).max);
+    // //     }
 
-        allowance = IERC20(_token).allowance(address(this), ROLLUP_PROCESSOR);
-        if (allowance != type(uint256).max) {
-            // Resetting allowance to 0 in order to avoid issues with USDT
-            IERC20(_token).safeApprove(ROLLUP_PROCESSOR, 0);
-            IERC20(_token).safeApprove(ROLLUP_PROCESSOR, type(uint256).max);
-        }
+    // //     allowance = IERC20(_token).allowance(address(this), ROLLUP_PROCESSOR);
+    // //     if (allowance != type(uint256).max) {
+    // //         // Resetting allowance to 0 in order to avoid issues with USDT
+    // //         IERC20(_token).safeApprove(ROLLUP_PROCESSOR, 0);
+    // //         IERC20(_token).safeApprove(ROLLUP_PROCESSOR, type(uint256).max);
+    // //     }
 
-        IERC20(_gmxRouter).approve(ROLLUP_PROCESSOR, type(uint256).max);
-    }
+    // //     IERC20(_gmxRouter).approve(ROLLUP_PROCESSOR, type(uint256).max);
+    // // }
 
 
     function convert(
@@ -158,6 +165,17 @@ contract GmxBridge is BridgeBase {
             outputValueA = 0;
             outputValueB = 0;
 
+            // address[] memory _path, yes
+            // address _indexToken, yes
+            // uint256 _amountIn, yes
+            // uint256 _minOut, needs to be sent across
+            // uint256 _sizeDelta, needs to be sent across
+            // bool _isLong, can determine via asset
+            // uint256 _acceptablePrice,
+            // uint256 _executionFee,
+            // bytes32 _referralCode,
+            // address _callbackTarget
+
             uint256 ticketId = sendTxnToL2(msg.value, _inputAssetA.erc20Address, _inputAssetB.erc20Address, _inputValue, false, 2000, 20000, 5000);
         }
         // Approve Router Contract
@@ -189,7 +207,8 @@ contract GmxBridge is BridgeBase {
         If MaxSubmissionCost is less than the submission fee, the Retryable Ticket creation fails.
         */
         // address(this) == 0xce71065d4017f316ec606fe4422e11eb2c47c246
-        uint256 ticketId = ARBITRUM_INBOX.createRetryableTicket{ value: _depositAmount }(address(GMX_ROUTER), 0, 1e18, msg.sender, msg.sender, 2e18, 0, callData);
+        // TODO: change address(GMX_ROUTER) to address(L2_contract)
+        uint256 ticketId = ARBITRUM_INBOX.createRetryableTicket{ value: _depositAmount }(address(L2_CONTRACT), 0, 1e18, msg.sender, msg.sender, 2e18, 0, callData);
         return ticketId;
         // address destAddr,
         // uint256 arbTxCallValue,
@@ -248,10 +267,8 @@ contract GmxBridge is BridgeBase {
         )
     {
 
-        // operation in asynchronous
-        interactionCompleted = true;
-        outputValueA = 0;
-        outputValueB = 0;
+        // Merkle root is posted on L1 in the Outbox contract,
+        // sendTxToL1 if fraud window has passed
         return (outputValueA, outputValueB, interactionCompleted);
 
 

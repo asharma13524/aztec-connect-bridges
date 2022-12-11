@@ -1,0 +1,22 @@
+@startuml arb-architecture
+
+title Aztec Gmx Connect Bridge
+
+
+(*) --> AztecRollupContract
+
+if "Convert"
+    if "auxData == 0"
+        --> "deposit"
+    elseif "auxData == 1"
+        --> "withdraw"
+    endif
+endif
+' elseif "Finalise"
+'     ->[if Perp redeemable] "Redeem"
+'     -->[Perp Not redeemable] "Cannot Redeem"
+' endif
+
+
+
+@enduml
