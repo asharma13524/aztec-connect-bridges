@@ -12,9 +12,10 @@ import {IGmxPositionRouter} from "src/interfaces/gmx/IPositionRouter.sol";
  * @custom:dev-run-script ./scripts/deploy_with_ethers.ts
  */
 contract L2Gmx {
+    // TODO: May need to create a mapping to store users addrs and balances
 
     constructor () {}
-    // GMX Router address for opening/closing positions
+    // GMX Router address for opening/closing position
     IGmxRouter public constant GMX_ROUTER = IGmxRouter(0xaBBc5F99639c9B6bCb58544ddf04EFA6802F4064);
 
     // Vault for additional functionality, contains whitelisted tokens
@@ -68,6 +69,7 @@ contract L2Gmx {
     }
 
 
+    // Will need to wait ~ 7 days for fraud proof window here...
     function settleBackToL1(address destination, bytes calldata calldataForL1) external payable returns(uint) {
         ARBSYS.sendTxToL1()
     };
@@ -81,4 +83,10 @@ contract L2Gmx {
     // How is custody management going to work ???
 
     // (address sender, address indexAsset, address collateralAsset, uint256 sizeDelta, bool isLong) = abi.decode(data, (address, address, address, uint256, bool));
+
+    // TODO: Add AddressAliasHelper
+    modifier onlyFromMyL1Contract() override {
+        require(AddressAliasHelper.undoL1ToL2Alias(msg.sender) == myL1ContractAddress, "ONLY_COUNTERPART_CONTRACT");
+        _;
+    }
 }
