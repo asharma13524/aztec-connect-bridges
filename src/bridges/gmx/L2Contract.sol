@@ -25,7 +25,7 @@ contract L2Gmx {
     IGmxPositionRouter public constant GMX_POSITION_ROUTER = IGmxPositionRouter(0xb87a436B93fFE9D75c5cFA7bAcFff96430b09868);
 
     // Arbsys contract
-    IArbsys public constant ARBSYS = Arbsys(0x0000000000000000000000000000000000000064);
+    // IArbsys public constant ARBSYS = Arbsys(0x0000000000000000000000000000000000000064);
 
 
     function increasePosition(bytes memory data) public payable {
@@ -70,9 +70,9 @@ contract L2Gmx {
 
 
     // Will need to wait ~ 7 days for fraud proof window here...
-    function settleBackToL1(address destination, bytes calldata calldataForL1) external payable returns(uint) {
-        ARBSYS.sendTxToL1()
-    };
+    // function settleBackToL1(address destination, bytes calldata calldataForL1) external payable returns(uint) {
+    //     ARBSYS.sendTxToL1();
+    // };
 
     // function decreasePosition(bytes memory data) public {
     //     // TODO: Need to figure out collateralDelta and receiver address
@@ -85,8 +85,8 @@ contract L2Gmx {
     // (address sender, address indexAsset, address collateralAsset, uint256 sizeDelta, bool isLong) = abi.decode(data, (address, address, address, uint256, bool));
 
     // TODO: Add AddressAliasHelper
-    modifier onlyFromMyL1Contract() override {
-        require(AddressAliasHelper.undoL1ToL2Alias(msg.sender) == myL1ContractAddress, "ONLY_COUNTERPART_CONTRACT");
-        _;
-    }
+    // modifier onlyFromMyL1Contract() override {
+    //     require(AddressAliasHelper.undoL1ToL2Alias(msg.sender) == myL1ContractAddress, "ONLY_COUNTERPART_CONTRACT");
+    //     _;
+    // }
 }

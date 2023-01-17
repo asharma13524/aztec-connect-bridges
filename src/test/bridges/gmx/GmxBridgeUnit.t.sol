@@ -16,6 +16,8 @@ import {L2Gmx} from "../../../bridges/gmx/L2Contract.sol";
 
 
 contract GmxBridgeUnitTest is Test {
+    uint256 ethMainnet;
+    uint256 arb;
     IArbitrumInbox public constant ARBITRUM_INBOX = IArbitrumInbox(0x6BEbC4925716945D46F0Ec336D5C2564F419682C);
     IERC20 public constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
     // USDC address for deposits
@@ -41,9 +43,13 @@ contract GmxBridgeUnitTest is Test {
         bridge = new GmxBridge(rollupProcessor, GMX_ROUTER, ARBINBOX, ARBSYS, ARBOUTBOX);
         vm.label(address(bridge), "GMX_BRIDGE");
 
-        // create arbitrum fork
+        // create eth fork
         string memory MAINNET_RPC_URL = vm.envString('MAINNET_RPC_URL');
-        uint256 ethMainnet = vm.createFork(MAINNET_RPC_URL);
+        ethMainnet = vm.createFork(MAINNET_RPC_URL);
+
+        // create arbitrum fork
+        string memory ARBITRUM_RPC_URL = vm.envString('ARBITRUM_RPC_URL');
+        arb = vm.createFork(ARBITRUM_RPC_URL);
         // rollupProcessor.setBridgeGasLimit(address(bridge), 100000);
     }
 
@@ -129,6 +135,8 @@ contract GmxBridgeUnitTest is Test {
 
     function testEndToEnd() public {
         // tests deploy to 0xb4c79dab8f259c7aee6e5b2aa729821864227e84
+        vm.makePersistent(address(bridge));
+        vm.selectFork(ethMainnet);
         uint256 depositAmount = 2 ether;
         vm.deal(address(bridge), depositAmount * 5);
         // Mint the depositAmount of Dai to rollupProcessor
@@ -153,6 +161,7 @@ contract GmxBridgeUnitTest is Test {
 
         // Disabling linting errors here to show return variables
         // solhint-disable-next-line
+
         (uint256 outputValueA, uint256 outputValueB, bool isAsync) = bridge.convert{value: depositAmount}(
             inputAssetA,
             inputAssetB,
@@ -165,7 +174,7 @@ contract GmxBridgeUnitTest is Test {
         );
 
         // wait a few blocks
-        
+
 
 
         // call finalize, push back to L1 Contract

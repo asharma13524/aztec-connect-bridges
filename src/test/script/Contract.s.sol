@@ -10,11 +10,10 @@ import { L2Gmx } from "../../bridges/gmx/L2Contract.sol";
 contract MyScript is Script {
     function run() external {
         string memory MAINNET_RPC_URL = vm.envString('MAINNET_RPC_URL');
-        uint256 mainnetFork = vm.createFork(MAINNET_RPC_URL);
+        uint256 mainnet = vm.createFork(MAINNET_RPC_URL);
 
         // deploy bridge contract on layer 1
-
-        vm.selectFork(mainnetFork);
+        vm.selectFork(mainnet);
 
         vm.startBroadcast();
 
@@ -23,16 +22,16 @@ contract MyScript is Script {
         vm.stopBroadcast();
 
         // deploy arbitrum contract on layer 2
+        // string memory ARBITRUM_RPC_URL = vm.envString('ARBITRUM_RPC_URL');
+        // uint256 arbitrum = vm.createFork(ARBITRUM_RPC_URL);
 
-        string memory ARBITRUM_RPC_URL = vm.envString('ARBITRUM_RPC_URL');
-        uint256 arbitrumMainnet = vm.createFork(ARBITRUM_RPC_URL);
-        vm.selectFork(arbitrumMainnet);
+        // vm.selectFork(arbitrum);
 
-        vm.startBroadcast();
+        // vm.startBroadcast();
 
-        L2Gmx l2contract = new L2Gmx();
+        // L2Gmx l2contract = new L2Gmx();
 
-        vm.stopBroadcast();
+        // vm.stopBroadcast();
 
         // extra scripts for later
         // vm.waitForTransaction();
